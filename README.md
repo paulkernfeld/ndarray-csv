@@ -26,8 +26,8 @@ fn main() {
 
     // Read an array back from the file
     let mut file = File::open("test.csv").expect("opening file failed");
-    let reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-    let array_read = read((2, 3), reader).expect("read failed");
+    let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
+    let array_read = read((2, 3), &mut reader).expect("read failed");
 
     // Ensure that we got the original array back
     assert_eq!(array_read, array);

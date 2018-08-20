@@ -24,8 +24,8 @@
 //!
 //!     // Read an array back from the file
 //!     let mut file = File::open("test.csv").expect("opening file failed");
-//!     let reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-//!     let array_read = read((2, 3), reader).expect("read failed");
+//!     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
+//!     let array_read = read((2, 3), &mut reader).expect("read failed");
 //!
 //!     // Ensure that we got the original array back
 //!     assert_eq!(array_read, array);
@@ -76,7 +76,7 @@ impl From<csv::Error> for Error {
 }
 
 /// Read CSV data into a new ndarray with the given shape
-pub fn read<A, R>(shape: (usize, usize), mut reader: Reader<R>) -> Result<Array2<A>, Error>
+pub fn read<A, R>(shape: (usize, usize), reader: &mut Reader<R>) -> Result<Array2<A>, Error>
 where
     R: Read,
     A: Copy,
@@ -162,14 +162,14 @@ mod tests {
 
     #[test]
     fn test_read_float() {
-        let actual = read((2, 3), test_reader()).unwrap();
+        let actual = read((2, 3), &mut test_reader()).unwrap();
         let expected = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_read_integer() {
-        let actual = read((2, 3), test_reader()).unwrap();
+        let actual = read((2, 3), &mut test_reader()).unwrap();
         let expected = array![[1, 2, 3], [4, 5, 6]];
         assert_eq!(actual, expected);
     }
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_read_csv_error() {
         assert_matches! {
-            read::<i8, _>((2, 3), in_memory_reader("1,2,3\n4,x,6\n")),
+            read::<i8, _>((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n")),
             Err(Csv(_))
         }
     }
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn test_read_too_few_rows() {
         assert_matches! {
-            read::<i8, _>((3, 3), test_reader()),
+            read::<i8, _>((3, 3), &mut test_reader()),
             Err(TooFewRows { expected: 3, actual: 2})
         }
     }
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_read_too_many_rows() {
         assert_matches! {
-            read::<i8, _>((1, 3), test_reader()),
+            read::<i8, _>((1, 3), &mut test_reader()),
             Err(TooManyRows { expected: 1 })
         }
     }
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_read_too_few_columns() {
         assert_matches! {
-            read::<i8, _>((2, 4), test_reader()),
+            read::<i8, _>((2, 4), &mut test_reader()),
             Err(TooFewColumns { at_row_index: 0, expected: 4, actual: 3 })
         }
     }
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn test_read_too_many_columns() {
         assert_matches! {
-            read::<i8, _>((2, 2), test_reader()),
+            read::<i8, _>((2, 2), &mut test_reader()),
             Err(TooManyColumns { at_row_index: 0, expected: 2 })
         }
     }
