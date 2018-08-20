@@ -1,18 +1,34 @@
-//! Easily read homogeneous CSV data into a 2D ndarray.
+//! Easily read and write homogeneous CSV data to and from 2D ndarrays.
 //!
 //! ```rust
 //! extern crate csv;
+//! extern crate ndarray;
 //! extern crate ndarray_csv;
 //!
-//! use csv::ReaderBuilder;
-//! use ndarray_csv::read;
+//! use csv::{ReaderBuilder, WriterBuilder};
+//! use ndarray::Array;
+//! use ndarray_csv::{read, write};
 //! use std::fs::File;
+//! use std::io::{Read, Write};
 //!
 //! fn main() {
-//!     let file = File::open("test.csv").expect("opening test.csv failed");
+//!     // Our 2x3 test array
+//!     let array = Array::from_vec(vec![1, 2, 3, 4, 5, 6]).into_shape((2, 3)).unwrap();
+//!
+//!     // Write the array into the file.
+//!     {
+//!         let mut file = File::create("test.csv").expect("creating file failed");
+//!         let mut writer = WriterBuilder::new().has_headers(false).from_writer(file);
+//!         write(&array, &mut writer).expect("write failed");
+//!     }
+//!
+//!     // Read an array back from the file
+//!     let mut file = File::open("test.csv").expect("opening file failed");
 //!     let reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-//!     let array = read::<f64, _>((2, 3), reader).expect("read failed");
-//!     assert_eq!(array.dim(), (2, 3));
+//!     let array_read = read((2, 3), reader).expect("read failed");
+//!
+//!     // Ensure that we got the original array back
+//!     assert_eq!(array_read, array);
 //! }
 //! ```
 //!
@@ -26,9 +42,9 @@ extern crate matches;
 extern crate ndarray;
 extern crate serde;
 
-use csv::Reader;
+use csv::{Reader, Writer};
 use ndarray::Array2;
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[derive(Debug)]
 pub enum Error {
@@ -64,7 +80,7 @@ pub fn read<A, R>(shape: (usize, usize), mut reader: Reader<R>) -> Result<Array2
 where
     R: Read,
     A: Copy,
-    for<'de> A: serde::de::Deserialize<'de>,
+    for<'de> A: serde::Deserialize<'de>,
 {
     // This is okay because this fn will return an Err when it is unable to fill the entire array.
     // Since this array is only returned when this fn returns an Ok, the end user will never be able
@@ -113,12 +129,26 @@ where
     }
 }
 
+/// Write this ndarray into CSV format
+pub fn write<A, W>(array: &Array2<A>, writer: &mut Writer<W>) -> Result<(), csv::Error>
+where
+    A: serde::Serialize,
+    W: Write,
+{
+    for row in array.outer_iter() {
+        writer.serialize(row.as_slice())?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::Error::*;
     use super::*;
     use csv::ReaderBuilder;
     use std::io::Cursor;
+    use csv::WriterBuilder;
 
     fn in_memory_reader(content: &'static str) -> Reader<impl Read> {
         ReaderBuilder::new()
@@ -127,7 +157,7 @@ mod tests {
     }
 
     fn test_reader() -> Reader<impl Read> {
-        in_memory_reader("1,2,3\n4,5,6")
+        in_memory_reader("1,2,3\n4,5,6\n")
     }
 
     #[test]
@@ -147,7 +177,7 @@ mod tests {
     #[test]
     fn test_read_csv_error() {
         assert_matches! {
-            read::<i8, _>((2, 3), in_memory_reader("1,2,3\n4,x,6")),
+            read::<i8, _>((2, 3), in_memory_reader("1,2,3\n4,x,6\n")),
             Err(Csv(_))
         }
     }
@@ -181,6 +211,33 @@ mod tests {
         assert_matches! {
             read::<i8, _>((2, 2), test_reader()),
             Err(TooManyColumns { at_row_index: 0, expected: 2 })
+        }
+    }
+
+    #[test]
+    fn test_write_ok() {
+        let mut writer = WriterBuilder::new()
+            .has_headers(false)
+            .from_writer(vec![]);
+
+        assert_matches! {
+            write(&array![[1, 2, 3], [4, 5, 6]], &mut writer),
+            Ok(())
+        }
+        assert_eq!(writer.into_inner().expect("flush failed"), b"1,2,3\n4,5,6\n");
+    }
+
+    #[test]
+    fn test_write_err() {
+        let destination: &mut [u8] = &mut [0; 8];
+        let mut writer = WriterBuilder::new()
+            .has_headers(false)
+            .from_writer(Cursor::new(destination));
+
+        // The destination is too short
+        assert_matches! {
+            write(&array![[1, 2, 3], [4, 5, 6]], &mut writer),
+            Err(_)
         }
     }
 }

@@ -1,20 +1,36 @@
 # ndarray-csv
 
-Easily read homogeneous CSV data into a 2D ndarray.
+Easily read and write homogeneous CSV data to and from 2D ndarrays.
 
 ```rust
 extern crate csv;
+extern crate ndarray;
 extern crate ndarray_csv;
 
-use csv::ReaderBuilder;
-use ndarray_csv::read;
+use csv::{ReaderBuilder, WriterBuilder};
+use ndarray::Array;
+use ndarray_csv::{read, write};
 use std::fs::File;
+use std::io::{Read, Write};
 
 fn main() {
-    let file = File::open("test.csv").expect("opening test.csv failed");
+    // Our 2x3 test array
+    let array = Array::from_vec(vec![1, 2, 3, 4, 5, 6]).into_shape((2, 3)).unwrap();
+
+    // Write the array into the file.
+    {
+        let mut file = File::create("test.csv").expect("creating file failed");
+        let mut writer = WriterBuilder::new().has_headers(false).from_writer(file);
+        write(&array, &mut writer).expect("write failed");
+    }
+
+    // Read an array back from the file
+    let mut file = File::open("test.csv").expect("opening file failed");
     let reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-    let array = read::<f64, _>((2, 3), reader).expect("read failed");
-    assert_eq!(array.dim(), (2, 3));
+    let array_read = read((2, 3), reader).expect("read failed");
+
+    // Ensure that we got the original array back
+    assert_eq!(array_read, array);
 }
 ```
 
