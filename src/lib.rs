@@ -34,6 +34,9 @@
 //!
 //! This project uses [cargo-make](https://sagiegurari.github.io/cargo-make/) for builds; to build,
 //! run `cargo make all`.
+//!
+//! To prevent denial-of-service attacks, do not read in untrusted CSV streams of unbounded length;
+//! this can be implemented with `std::io::Read::take`.
 extern crate csv;
 #[cfg(test)]
 #[macro_use]
@@ -43,29 +46,20 @@ extern crate ndarray;
 extern crate serde;
 
 use csv::{Reader, Writer};
-use ndarray::Array2;
+use ndarray::{Array1, Array2};
 use std::io::{Read, Write};
 
 #[derive(Debug)]
 pub enum Error {
     Csv(csv::Error),
-    TooFewRows {
+    NRows {
         expected: usize,
         actual: usize,
     },
-    // We don't want to read the whole file, so this only reports that there were too many rows
-    TooManyRows {
-        expected: usize,
-    },
-    TooFewColumns {
+    NColumns {
         at_row_index: usize,
         expected: usize,
         actual: usize,
-    },
-    // We don't want to read the whole row, so this only reports that there were too many columns
-    TooManyColumns {
-        at_row_index: usize,
-        expected: usize,
     },
 }
 
@@ -87,45 +81,30 @@ where
     // to read unitialized memory.
     let mut array = unsafe { Array2::uninitialized(shape) };
     let (n_rows, n_columns) = shape;
-    let mut max_row_read: usize = 0;
-    for (r, row) in reader.deserialize().enumerate() {
-        if r >= n_rows {
-            return Err(Error::TooManyRows { expected: n_rows });
-        }
 
-        let row_vec: Vec<A> = row?;
-        let mut max_column_read: usize = 0;
-        for (c, value) in row_vec.into_iter().enumerate() {
-            if c >= n_columns {
-                return Err(Error::TooManyColumns {
+    let mut rows = reader.deserialize();
+    for (r, mut array_row) in array.genrows_mut().into_iter().enumerate() {
+        if let Some(row) = rows.next() {
+            let mut row_vec: Vec<A> = row?;
+            if row_vec.len() != n_columns {
+                return Err(Error::NColumns {
                     at_row_index: r,
                     expected: n_columns,
+                    actual: row_vec.len(),
                 });
             }
 
-            array[(r, c)] = value;
-            max_column_read = c
+            array_row.assign(&Array1::from_vec(row_vec));
+        } else {
+            return Err(Error::NRows { expected: n_rows, actual: r });
         }
-
-        let n_columns_read = max_column_read + 1;
-        if n_columns_read < n_columns {
-            return Err(Error::TooFewColumns {
-                at_row_index: r,
-                expected: n_columns,
-                actual: n_columns_read,
-            });
-        }
-
-        max_row_read = r;
     }
-    let n_rows_read = max_row_read + 1;
-    if n_rows_read < n_rows {
-        Err(Error::TooFewRows {
-            expected: n_rows,
-            actual: n_rows_read,
-        })
-    } else {
+
+    let n_extra_rows = rows.count();
+    if n_extra_rows == 0 {
         Ok(array)
+    } else {
+        Err(Error::NRows { expected: n_rows, actual: n_rows + n_extra_rows })
     }
 }
 
@@ -186,7 +165,7 @@ mod tests {
     fn test_read_too_few_rows() {
         assert_matches! {
             read::<i8, _>((3, 3), &mut test_reader()),
-            Err(TooFewRows { expected: 3, actual: 2})
+            Err(NRows { expected: 3, actual: 2})
         }
     }
 
@@ -194,7 +173,7 @@ mod tests {
     fn test_read_too_many_rows() {
         assert_matches! {
             read::<i8, _>((1, 3), &mut test_reader()),
-            Err(TooManyRows { expected: 1 })
+            Err(NRows { expected: 1, actual: 2 })
         }
     }
 
@@ -202,7 +181,7 @@ mod tests {
     fn test_read_too_few_columns() {
         assert_matches! {
             read::<i8, _>((2, 4), &mut test_reader()),
-            Err(TooFewColumns { at_row_index: 0, expected: 4, actual: 3 })
+            Err(NColumns { at_row_index: 0, expected: 4, actual: 3 })
         }
     }
 
@@ -210,7 +189,7 @@ mod tests {
     fn test_read_too_many_columns() {
         assert_matches! {
             read::<i8, _>((2, 2), &mut test_reader()),
-            Err(TooManyColumns { at_row_index: 0, expected: 2 })
+            Err(NColumns { at_row_index: 0, expected: 2, actual: 3 })
         }
     }
 
