@@ -10,6 +10,7 @@ repository = "https://github.com/paulkernfeld/ndarray-csv"
 
 [dependencies]
 csv = "1"
+failure = "0.1"
 ndarray = "0.12"
 serde = "1"
 

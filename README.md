@@ -37,4 +37,7 @@ fn main() {
 This project uses [cargo-make](https://sagiegurari.github.io/cargo-make/) for builds; to build,
 run `cargo make all`.
 
+To prevent denial-of-service attacks, do not read in untrusted CSV streams of unbounded length;
+this can be implemented with `std::io::Read::take`.
+
 License: MIT/Apache-2.0
