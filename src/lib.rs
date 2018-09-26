@@ -58,10 +58,10 @@ pub enum ReadError {
     NRows { expected: usize, actual: usize },
 
     #[fail(
-        display = "wrong number of columns on row {}: expected {}, actual {}",
-        at_row_index,
-        expected,
-        actual
+    display = "wrong number of columns on row {}: expected {}, actual {}",
+    at_row_index,
+    expected,
+    actual
     )]
     NColumns {
         at_row_index: usize,
@@ -71,11 +71,10 @@ pub enum ReadError {
 }
 
 /// Read CSV data into a new ndarray with the given shape
-pub fn read<A, R>(shape: (usize, usize), reader: &mut Reader<R>) -> Result<Array2<A>, Error>
-where
-    R: Read,
-    A: Copy,
-    for<'de> A: serde::Deserialize<'de>,
+pub fn read<A>(shape: (usize, usize), reader: &mut Reader<impl Read>) -> Result<Array2<A>, Error>
+    where
+        A: Copy,
+        for<'de> A: serde::Deserialize<'de>,
 {
     // This is okay because this fn will return an Err when it is unable to fill the entire array.
     // Since this array is only returned when this fn returns an Ok, the end user will never be able
@@ -116,10 +115,9 @@ where
 }
 
 /// Write this ndarray into CSV format
-pub fn write<A, W>(array: &Array2<A>, writer: &mut Writer<W>) -> Result<(), csv::Error>
-where
-    A: serde::Serialize,
-    W: Write,
+pub fn write<A>(array: &Array2<A>, writer: &mut Writer<impl Write>) -> Result<(), csv::Error>
+    where
+        A: serde::Serialize,
 {
     for row in array.outer_iter() {
         writer.serialize(row.as_slice())?;
@@ -162,7 +160,8 @@ mod tests {
 
     #[test]
     fn test_read_csv_error() {
-        read::<i8, _>((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n"))
+        let readed: Result<Array2<i8>, _> = read((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n"));
+        readed
             .unwrap_err()
             .downcast_ref::<csv::Error>()
             .unwrap();
@@ -170,32 +169,36 @@ mod tests {
 
     #[test]
     fn test_read_too_few_rows() {
+        let readed: Result<Array2<i8>, _> = read((3, 3), &mut test_reader());
         assert_matches! {
-            read::<i8, _>((3, 3), &mut test_reader()).unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err().downcast_ref().unwrap(),
             NRows { expected: 3, actual: 2 }
         }
     }
 
     #[test]
     fn test_read_too_many_rows() {
+        let readed: Result<Array2<i8>, _> = read((1, 3), &mut test_reader());
         assert_matches! {
-            read::<i8, _>((1, 3), &mut test_reader()).unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err().downcast_ref().unwrap(),
             NRows { expected: 1, actual: 2 }
         }
     }
 
     #[test]
     fn test_read_too_few_columns() {
+        let readed: Result<Array2<i8>, _> = read((2, 4), &mut test_reader());
         assert_matches! {
-            read::<i8, _>((2, 4), &mut test_reader()).unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err().downcast_ref().unwrap(),
             NColumns { at_row_index: 0, expected: 4, actual: 3 }
         }
     }
 
     #[test]
     fn test_read_too_many_columns() {
+        let readed: Result<Array2<i8>, _> = read((2, 2), &mut test_reader());
         assert_matches! {
-            read::<i8, _>((2, 2), &mut test_reader()).unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err().downcast_ref().unwrap(),
             NColumns { at_row_index: 0, expected: 2, actual: 3 }
         }
     }
