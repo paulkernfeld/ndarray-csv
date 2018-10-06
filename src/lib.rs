@@ -38,6 +38,7 @@
 //! To prevent denial-of-service attacks, do not read in untrusted CSV streams of unbounded length;
 //! this can be implemented with `std::io::Read::take`.
 extern crate csv;
+extern crate either;
 #[macro_use]
 extern crate failure;
 #[cfg(test)]
@@ -48,9 +49,11 @@ extern crate ndarray;
 extern crate serde;
 
 use csv::{Reader, Writer};
+use either::Either;
 use failure::Error;
 use ndarray::{Array1, Array2};
 use std::io::{Read, Write};
+use std::iter::once;
 
 #[derive(Debug, Fail)]
 pub enum ReadError {
@@ -72,46 +75,42 @@ pub enum ReadError {
 
 /// Read CSV data into a new ndarray with the given shape
 pub fn read<A>(shape: (usize, usize), reader: &mut Reader<impl Read>) -> Result<Array2<A>, Error>
-    where
-        A: Copy,
-        for<'de> A: serde::Deserialize<'de>,
+where
+    A: Copy,
+    for<'de> A: serde::Deserialize<'de>,
 {
-    // This is okay because this fn will return an Err when it is unable to fill the entire array.
-    // Since this array is only returned when this fn returns an Ok, the end user will never be able
-    // to read unitialized memory.
-    let mut array = unsafe { Array2::uninitialized(shape) };
     let (n_rows, n_columns) = shape;
 
-    let mut rows = reader.deserialize();
-    for (r, mut array_row) in array.genrows_mut().into_iter().enumerate() {
-        if let Some(row) = rows.next() {
-            let mut row_vec: Vec<A> = row?;
-            if row_vec.len() != n_columns {
-                return Err(Error::from(ReadError::NColumns {
-                    at_row_index: r,
-                    expected: n_columns,
-                    actual: row_vec.len(),
-                }));
-            }
-
-            array_row.assign(&Array1::from_vec(row_vec));
+    let rows = reader.deserialize::<Vec<A>>();
+    let values = rows.enumerate().flat_map(|(row_index, row)| match row {
+        Err(e) => Either::Left(once(Err(Error::from(e)))),
+        Ok(row_vec) => Either::Right(if row_vec.len() == n_columns {
+            Either::Right(row_vec.into_iter().map(|x| Ok(x)))
         } else {
-            return Err(Error::from(ReadError::NRows {
-                expected: n_rows,
-                actual: r,
-            }));
-        }
-    }
+            Either::Left(once(Err(Error::from(ReadError::NColumns {
+                at_row_index: row_index,
+                expected: n_columns,
+                actual: row_vec.len(),
+            }))))
+        }),
+    });
+    let array1_result: Result<Array1<A>, _> = values.collect();
+    array1_result.and_then(|array1| {
+        let array1_len = array1.len();
+        let actual_n_rows = array1_len / n_columns;
 
-    let n_extra_rows = rows.count();
-    if n_extra_rows == 0 {
-        Ok(array)
-    } else {
-        Err(Error::from(ReadError::NRows {
-            expected: n_rows,
-            actual: n_rows + n_extra_rows,
-        }))
-    }
+        if actual_n_rows == n_rows {
+            Ok(array1.into_shape(shape).expect(&format!(
+                "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
+                array1_len, shape
+            )))
+        } else {
+            Err(Error::from(ReadError::NRows {
+                expected: n_rows,
+                actual: actual_n_rows,
+            }))
+        }
+    })
 }
 
 /// Write this ndarray into CSV format
