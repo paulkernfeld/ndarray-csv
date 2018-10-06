@@ -57,14 +57,18 @@ use std::iter::once;
 
 #[derive(Debug, Fail)]
 pub enum ReadError {
-    #[fail(display = "wrong number of rows: expected {}, actual {}", expected, actual)]
+    #[fail(
+        display = "wrong number of rows: expected {}, actual {}",
+        expected,
+        actual
+    )]
     NRows { expected: usize, actual: usize },
 
     #[fail(
-    display = "wrong number of columns on row {}: expected {}, actual {}",
-    at_row_index,
-    expected,
-    actual
+        display = "wrong number of columns on row {}: expected {}, actual {}",
+        at_row_index,
+        expected,
+        actual
     )]
     NColumns {
         at_row_index: usize,
@@ -115,8 +119,8 @@ where
 
 /// Write this ndarray into CSV format
 pub fn write<A>(array: &Array2<A>, writer: &mut Writer<impl Write>) -> Result<(), csv::Error>
-    where
-        A: serde::Serialize,
+where
+    A: serde::Serialize,
 {
     for row in array.outer_iter() {
         writer.serialize(row.as_slice())?;
@@ -160,10 +164,7 @@ mod tests {
     #[test]
     fn test_read_csv_error() {
         let readed: Result<Array2<i8>, _> = read((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n"));
-        readed
-            .unwrap_err()
-            .downcast_ref::<csv::Error>()
-            .unwrap();
+        readed.unwrap_err().downcast_ref::<csv::Error>().unwrap();
     }
 
     #[test]
