@@ -2,7 +2,7 @@
 name = "ndarray-csv"
 description = "Easily read and write homogeneous CSV data to and from 2D ndarrays"
 readme = "README.md"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Paul Kernfeld <paulkernfeld@gmail.com>"]
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/ndarray-csv"
