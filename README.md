@@ -11,7 +11,6 @@ use csv::{ReaderBuilder, WriterBuilder};
 use ndarray::Array;
 use ndarray_csv::{read, write};
 use std::fs::File;
-use std::io::{Read, Write};
 
 fn main() {
     // Our 2x3 test array
@@ -19,13 +18,13 @@ fn main() {
 
     // Write the array into the file.
     {
-        let mut file = File::create("test.csv").expect("creating file failed");
+        let file = File::create("test.csv").expect("creating file failed");
         let mut writer = WriterBuilder::new().has_headers(false).from_writer(file);
         write(&array, &mut writer).expect("write failed");
     }
 
     // Read an array back from the file
-    let mut file = File::open("test.csv").expect("opening file failed");
+    let file = File::open("test.csv").expect("opening file failed");
     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
     let array_read = read((2, 3), &mut reader).expect("read failed");
 
