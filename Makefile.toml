@@ -3,8 +3,18 @@ install_crate = "readme"
 command = "cargo"
 args = ["readme", "-o", "README.md"]
 
+[tasks.fmt]
+command = "cargo"
+args = ["fmt"]
+
+[tasks.clippy]
+command = "cargo"
+args = ["clippy"]
+
 [tasks.all]
 dependencies = [
     "test",
+    "clippy",
+    "fmt",
     "readme",
 ]
