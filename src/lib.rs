@@ -51,6 +51,7 @@ use csv::{Reader, Writer};
 use either::Either;
 use failure::Error;
 use ndarray::{Array1, Array2};
+use serde::de::DeserializeOwned;
 use std::io::{Read, Write};
 use std::iter::once;
 
@@ -79,8 +80,7 @@ pub enum ReadError {
 /// Read CSV data into a new ndarray with the given shape
 pub fn read<A>(shape: (usize, usize), reader: &mut Reader<impl Read>) -> Result<Array2<A>, Error>
 where
-    A: Copy,
-    for<'de> A: serde::Deserialize<'de>,
+    A: Copy + DeserializeOwned,
 {
     let (n_rows, n_columns) = shape;
 
