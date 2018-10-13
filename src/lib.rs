@@ -88,7 +88,7 @@ where
     let values = rows.enumerate().flat_map(|(row_index, row)| match row {
         Err(e) => Either::Left(once(Err(Error::from(e)))),
         Ok(row_vec) => Either::Right(if row_vec.len() == n_columns {
-            Either::Right(row_vec.into_iter().map(|x| Ok(x)))
+            Either::Right(row_vec.into_iter().map(Ok))
         } else {
             Either::Left(once(Err(Error::from(ReadError::NColumns {
                 at_row_index: row_index,
@@ -103,10 +103,12 @@ where
         let actual_n_rows = array1_len / n_columns;
 
         if actual_n_rows == n_rows {
-            Ok(array1.into_shape(shape).expect(&format!(
-                "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
-                array1_len, shape
-            )))
+            Ok(array1.into_shape(shape).unwrap_or_else(|_| {
+                panic!(
+                    "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
+                    array1_len, shape
+                )
+            }))
         } else {
             Err(Error::from(ReadError::NRows {
                 expected: n_rows,
