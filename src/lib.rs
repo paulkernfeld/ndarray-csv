@@ -38,8 +38,6 @@
 //! this can be implemented with `std::io::Read::take`.
 extern crate csv;
 extern crate either;
-#[macro_use]
-extern crate failure;
 #[cfg(test)]
 #[macro_use]
 extern crate matches;
@@ -49,27 +47,18 @@ extern crate serde;
 
 use csv::{Reader, Writer};
 use either::Either;
-use failure::Error;
 use ndarray::{Array1, Array2};
 use serde::de::DeserializeOwned;
 use std::io::{Read, Write};
 use std::iter::once;
 
-#[derive(Debug, Fail)]
+#[derive(Debug)]
 pub enum ReadError {
-    #[fail(
-        display = "wrong number of rows: expected {}, actual {}",
-        expected,
-        actual
-    )]
-    NRows { expected: usize, actual: usize },
-
-    #[fail(
-        display = "wrong number of columns on row {}: expected {}, actual {}",
-        at_row_index,
-        expected,
-        actual
-    )]
+    Csv(csv::Error),
+    NRows {
+        expected: usize,
+        actual: usize,
+    },
     NColumns {
         at_row_index: usize,
         expected: usize,
@@ -78,7 +67,10 @@ pub enum ReadError {
 }
 
 /// Read CSV data into a new ndarray with the given shape
-pub fn read<A>(shape: (usize, usize), reader: &mut Reader<impl Read>) -> Result<Array2<A>, Error>
+pub fn read<A>(
+    shape: (usize, usize),
+    reader: &mut Reader<impl Read>,
+) -> Result<Array2<A>, ReadError>
 where
     A: Copy + DeserializeOwned,
 {
@@ -86,15 +78,15 @@ where
 
     let rows = reader.deserialize::<Vec<A>>();
     let values = rows.enumerate().flat_map(|(row_index, row)| match row {
-        Err(e) => Either::Left(once(Err(Error::from(e)))),
+        Err(e) => Either::Left(once(Err(ReadError::Csv(e)))),
         Ok(row_vec) => Either::Right(if row_vec.len() == n_columns {
             Either::Right(row_vec.into_iter().map(Ok))
         } else {
-            Either::Left(once(Err(Error::from(ReadError::NColumns {
+            Either::Left(once(Err(ReadError::NColumns {
                 at_row_index: row_index,
                 expected: n_columns,
                 actual: row_vec.len(),
-            }))))
+            })))
         }),
     });
     let array1_result: Result<Array1<A>, _> = values.collect();
@@ -110,10 +102,10 @@ where
                 )
             }))
         } else {
-            Err(Error::from(ReadError::NRows {
+            Err(ReadError::NRows {
                 expected: n_rows,
                 actual: actual_n_rows,
-            }))
+            })
         }
     })
 }
@@ -165,14 +157,14 @@ mod tests {
     #[test]
     fn test_read_csv_error() {
         let readed: Result<Array2<i8>, _> = read((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n"));
-        readed.unwrap_err().downcast_ref::<csv::Error>().unwrap();
+        readed.unwrap_err();
     }
 
     #[test]
     fn test_read_too_few_rows() {
         let readed: Result<Array2<i8>, _> = read((3, 3), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err(),
             NRows { expected: 3, actual: 2 }
         }
     }
@@ -181,7 +173,7 @@ mod tests {
     fn test_read_too_many_rows() {
         let readed: Result<Array2<i8>, _> = read((1, 3), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err(),
             NRows { expected: 1, actual: 2 }
         }
     }
@@ -190,7 +182,7 @@ mod tests {
     fn test_read_too_few_columns() {
         let readed: Result<Array2<i8>, _> = read((2, 4), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err(),
             NColumns { at_row_index: 0, expected: 4, actual: 3 }
         }
     }
@@ -199,7 +191,7 @@ mod tests {
     fn test_read_too_many_columns() {
         let readed: Result<Array2<i8>, _> = read((2, 2), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err().downcast_ref().unwrap(),
+            readed.unwrap_err(),
             NColumns { at_row_index: 0, expected: 2, actual: 3 }
         }
     }
