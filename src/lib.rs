@@ -7,7 +7,7 @@
 //!
 //! use csv::{ReaderBuilder, WriterBuilder};
 //! use ndarray::Array;
-//! use ndarray_csv::{read, write};
+//! use ndarray_csv::{Array2Reader, Array2Writer};
 //! use std::fs::File;
 //!
 //! fn main() {
@@ -18,13 +18,13 @@
 //!     {
 //!         let file = File::create("test.csv").expect("creating file failed");
 //!         let mut writer = WriterBuilder::new().has_headers(false).from_writer(file);
-//!         write(&array, &mut writer).expect("write failed");
+//!         writer.serialize_array2(&array).expect("write failed");
 //!     }
 //!
 //!     // Read an array back from the file
 //!     let file = File::open("test.csv").expect("opening file failed");
 //!     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-//!     let array_read = read((2, 3), &mut reader).expect("read failed");
+//!     let array_read = reader.deserialize_array2((2, 3)).expect("read failed");
 //!
 //!     // Ensure that we got the original array back
 //!     assert_eq!(array_read, array);
@@ -49,8 +49,18 @@ use csv::{Reader, Writer};
 use either::Either;
 use ndarray::{Array1, Array2};
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::io::{Read, Write};
 use std::iter::once;
+
+/// An extension trait; this is implemented by &mut csv::Reader
+pub trait Array2Reader {
+    /// Read CSV data into a new ndarray with the given shape
+    fn deserialize_array2<A: DeserializeOwned>(
+        self,
+        shape: (usize, usize),
+    ) -> Result<Array2<A>, ReadError>;
+}
 
 #[derive(Debug)]
 pub enum ReadError {
@@ -66,68 +76,69 @@ pub enum ReadError {
     },
 }
 
-/// Read CSV data into a new ndarray with the given shape
-pub fn read<A>(
-    shape: (usize, usize),
-    reader: &mut Reader<impl Read>,
-) -> Result<Array2<A>, ReadError>
-where
-    A: Copy + DeserializeOwned,
-{
-    let (n_rows, n_columns) = shape;
+impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
+    fn deserialize_array2<A: DeserializeOwned>(
+        self,
+        shape: (usize, usize),
+    ) -> Result<Array2<A>, ReadError> {
+        let (n_rows, n_columns) = shape;
 
-    let rows = reader.deserialize::<Vec<A>>();
-    let values = rows.enumerate().flat_map(|(row_index, row)| match row {
-        Err(e) => Either::Left(once(Err(ReadError::Csv(e)))),
-        Ok(row_vec) => Either::Right(if row_vec.len() == n_columns {
-            Either::Right(row_vec.into_iter().map(Ok))
-        } else {
-            Either::Left(once(Err(ReadError::NColumns {
-                at_row_index: row_index,
-                expected: n_columns,
-                actual: row_vec.len(),
-            })))
-        }),
-    });
-    let array1_result: Result<Array1<A>, _> = values.collect();
-    array1_result.and_then(|array1| {
-        let array1_len = array1.len();
-        let actual_n_rows = array1_len / n_columns;
+        let rows = self.deserialize::<Vec<A>>();
+        let values = rows.enumerate().flat_map(|(row_index, row)| match row {
+            Err(e) => Either::Left(once(Err(ReadError::Csv(e)))),
+            Ok(row_vec) => Either::Right(if row_vec.len() == n_columns {
+                Either::Right(row_vec.into_iter().map(Ok))
+            } else {
+                Either::Left(once(Err(ReadError::NColumns {
+                    at_row_index: row_index,
+                    expected: n_columns,
+                    actual: row_vec.len(),
+                })))
+            }),
+        });
+        let array1_result: Result<Array1<A>, _> = values.collect();
+        array1_result.and_then(|array1| {
+            let array1_len = array1.len();
+            let actual_n_rows = array1_len / n_columns;
 
-        if actual_n_rows == n_rows {
-            Ok(array1.into_shape(shape).unwrap_or_else(|_| {
-                panic!(
-                    "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
-                    array1_len, shape
-                )
-            }))
-        } else {
-            Err(ReadError::NRows {
-                expected: n_rows,
-                actual: actual_n_rows,
-            })
-        }
-    })
+            if actual_n_rows == n_rows {
+                Ok(array1.into_shape(shape).unwrap_or_else(|_| {
+                    panic!(
+                        "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
+                        array1_len, shape
+                    )
+                }))
+            } else {
+                Err(ReadError::NRows {
+                    expected: n_rows,
+                    actual: actual_n_rows,
+                })
+            }
+        })
+    }
 }
 
-/// Write this ndarray into CSV format
-pub fn write<A>(array: &Array2<A>, writer: &mut Writer<impl Write>) -> Result<(), csv::Error>
-where
-    A: serde::Serialize,
-{
-    for row in array.outer_iter() {
-        writer.serialize(row.as_slice())?;
+/// An extension trait; this is implemented by &mut csv::Writer
+pub trait Array2Writer {
+    /// Write this ndarray into CSV format
+    fn serialize_array2<A: Serialize>(self, array: &Array2<A>) -> Result<(), csv::Error>;
+}
+
+impl<'a, W: Write> Array2Writer for &'a mut Writer<W> {
+    fn serialize_array2<A: Serialize>(self, array: &Array2<A>) -> Result<(), csv::Error> {
+        for row in array.outer_iter() {
+            self.serialize(row.as_slice())?;
+        }
+        self.flush()?;
+        Ok(())
     }
-    writer.flush()?;
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::ReadError::*;
     use super::*;
-    use csv::ReaderBuilder;
-    use csv::WriterBuilder;
+    use csv::{Reader, ReaderBuilder, WriterBuilder};
     use std::io::Cursor;
 
     fn in_memory_reader(content: &'static str) -> Reader<impl Read> {
@@ -142,56 +153,53 @@ mod tests {
 
     #[test]
     fn test_read_float() {
-        let actual = read((2, 3), &mut test_reader()).unwrap();
+        let actual = test_reader().deserialize_array2((2, 3)).unwrap();
         let expected = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_read_integer() {
-        let actual = read((2, 3), &mut test_reader()).unwrap();
+        let actual = test_reader().deserialize_array2((2, 3)).unwrap();
         let expected = array![[1, 2, 3], [4, 5, 6]];
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_read_csv_error() {
-        let readed: Result<Array2<i8>, _> = read((2, 3), &mut in_memory_reader("1,2,3\n4,x,6\n"));
-        readed.unwrap_err();
+        in_memory_reader("1,2,3\n4,x,6\n")
+            .deserialize_array2::<i8>((2, 3))
+            .unwrap_err();
     }
 
     #[test]
     fn test_read_too_few_rows() {
-        let readed: Result<Array2<i8>, _> = read((3, 3), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err(),
+            test_reader().deserialize_array2::<i8>((3, 3)).unwrap_err(),
             NRows { expected: 3, actual: 2 }
         }
     }
 
     #[test]
     fn test_read_too_many_rows() {
-        let readed: Result<Array2<i8>, _> = read((1, 3), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err(),
+            test_reader().deserialize_array2::<i8>((1, 3)).unwrap_err(),
             NRows { expected: 1, actual: 2 }
         }
     }
 
     #[test]
     fn test_read_too_few_columns() {
-        let readed: Result<Array2<i8>, _> = read((2, 4), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err(),
+            test_reader().deserialize_array2::<i8>((2, 4)).unwrap_err(),
             NColumns { at_row_index: 0, expected: 4, actual: 3 }
         }
     }
 
     #[test]
     fn test_read_too_many_columns() {
-        let readed: Result<Array2<i8>, _> = read((2, 2), &mut test_reader());
         assert_matches! {
-            readed.unwrap_err(),
+            test_reader().deserialize_array2::<i8>((2, 2)).unwrap_err(),
             NColumns { at_row_index: 0, expected: 2, actual: 3 }
         }
     }
@@ -201,7 +209,7 @@ mod tests {
         let mut writer = WriterBuilder::new().has_headers(false).from_writer(vec![]);
 
         assert_matches! {
-            write(&array![[1, 2, 3], [4, 5, 6]], &mut writer),
+            writer.serialize_array2(&array![[1, 2, 3], [4, 5, 6]]),
             Ok(())
         }
         assert_eq!(
@@ -219,7 +227,7 @@ mod tests {
 
         // The destination is too short
         assert_matches! {
-            write(&array![[1, 2, 3], [4, 5, 6]], &mut writer),
+            writer.serialize_array2(&array![[1, 2, 3], [4, 5, 6]]),
             Err(_)
         }
     }
