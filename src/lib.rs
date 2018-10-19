@@ -53,7 +53,7 @@ use serde::Serialize;
 use std::io::{Read, Write};
 use std::iter::once;
 
-/// An extension trait; this is implemented by &mut csv::Reader
+/// An extension trait; this is implemented by `&mut csv::Reader`
 pub trait Array2Reader {
     /// Read CSV data into a new ndarray with the given shape
     fn deserialize_array2<A: DeserializeOwned>(
@@ -118,7 +118,7 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
     }
 }
 
-/// An extension trait; this is implemented by &mut csv::Writer
+/// An extension trait; this is implemented by `&mut csv::Writer`
 pub trait Array2Writer {
     /// Write this ndarray into CSV format
     fn serialize_array2<A: Serialize>(self, array: &Array2<A>) -> Result<(), csv::Error>;
