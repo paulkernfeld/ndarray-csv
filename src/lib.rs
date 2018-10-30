@@ -50,6 +50,8 @@ use either::Either;
 use ndarray::{Array1, Array2};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::io::{Read, Write};
 use std::iter::once;
 
@@ -75,6 +77,28 @@ pub enum ReadError {
         actual: usize,
     },
 }
+
+impl Display for ReadError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            ReadError::Csv(csv_error) => csv_error.fmt(f),
+            ReadError::NRows { expected, actual } => {
+                write!(f, "Expected {} rows but got {} rows", expected, actual)
+            }
+            ReadError::NColumns {
+                at_row_index,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "On row {}, expected {} columns but got {} columns",
+                at_row_index, expected, actual
+            ),
+        }
+    }
+}
+
+impl Error for ReadError {}
 
 impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
     fn deserialize_array2<A: DeserializeOwned>(
