@@ -123,21 +123,10 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
         let array1_result: Result<Array1<A>, _> = values.collect();
         array1_result.and_then(|array1| {
             let array1_len = array1.len();
-            let actual_n_rows = array1_len / n_columns;
-
-            if actual_n_rows == n_rows {
-                Ok(array1.into_shape(shape).unwrap_or_else(|_| {
-                    panic!(
-                        "Reshaping from an Array1 of length {:?} to an Array2 of size {:?} failed",
-                        array1_len, shape
-                    )
-                }))
-            } else {
-                Err(ReadError::NRows {
-                    expected: n_rows,
-                    actual: actual_n_rows,
-                })
-            }
+            array1.into_shape(shape).map_err(|_| ReadError::NRows {
+                expected: n_rows,
+                actual: array1_len / n_columns,
+            })
         })
     }
 }
