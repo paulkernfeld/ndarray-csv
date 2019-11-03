@@ -8,14 +8,14 @@ extern crate ndarray;
 extern crate ndarray_csv;
 
 use csv::{ReaderBuilder, WriterBuilder};
-use ndarray::Array;
+use ndarray::{Array, Array2};
 use ndarray_csv::{Array2Reader, Array2Writer};
 use std::error::Error;
 use std::fs::File;
 
-fn main() -> Result<(), Box<Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Our 2x3 test array
-    let array = Array::from_vec(vec![1, 2, 3, 4, 5, 6]).into_shape((2, 3)).unwrap();
+    let array = Array::from(vec![1, 2, 3, 4, 5, 6]).into_shape((2, 3)).unwrap();
 
     // Write the array into the file.
     {
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<Error>> {
     // Read an array back from the file
     let file = File::open("test.csv")?;
     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
-    let array_read = reader.deserialize_array2((2, 3))?;
+    let array_read: Array2<u64> = reader.deserialize_array2((2, 3))?;
 
     // Ensure that we got the original array back
     assert_eq!(array_read, array);
