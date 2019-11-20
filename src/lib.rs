@@ -64,6 +64,8 @@ pub trait Array2Reader {
         self,
         shape: (usize, usize),
     ) -> Result<Array2<A>, ReadError>;
+
+    fn deserialize_array2_dynamic<A: DeserializeOwned>(self) -> Result<Array2<A>, ReadError>;
 }
 
 #[derive(Debug)]
@@ -131,6 +133,38 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
             })
         })
     }
+
+    fn deserialize_array2_dynamic<A: DeserializeOwned>(self) -> Result<Array2<A>, ReadError> {
+        let mut row_count = 0;
+        let mut last_columns = None;
+
+        let rows = self.deserialize::<Vec<A>>();
+        let values = rows.enumerate().flat_map(|(row_index, row)| {
+            row_count += 1;
+            match row {
+                Err(e) => Either::Left(once(Err(ReadError::Csv(e)))),
+                Ok(row_vec) => {
+                    if let Some(last_columns) = last_columns {
+                        if last_columns != row_vec.len() {
+                            return Either::Right(Either::Left(once(Err(ReadError::NColumns {
+                                at_row_index: row_index,
+                                expected: last_columns,
+                                actual: row_vec.len(),
+                            }))));
+                        }
+                    };
+                    last_columns = Some(row_vec.len());
+                    Either::Right(Either::Right(row_vec.into_iter().map(Ok)))
+                }
+            }
+        });
+        let array1_result: Result<Array1<A>, _> = values.collect();
+        array1_result.and_then(|array1| {
+            Ok(array1
+                .into_shape((row_count, last_columns.unwrap_or(0)))
+                .unwrap())
+        })
+    }
 }
 
 /// An extension trait; this is implemented by `&mut csv::Writer`
@@ -176,6 +210,13 @@ mod tests {
     #[test]
     fn test_read_integer() {
         let actual: Array2<u64> = test_reader().deserialize_array2((2, 3)).unwrap();
+        let expected = array![[1, 2, 3], [4, 5, 6]];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_read_dynamic() {
+        let actual: Array2<u64> = test_reader().deserialize_array2_dynamic().unwrap();
         let expected = array![[1, 2, 3], [4, 5, 6]];
         assert_eq!(actual, expected);
     }
