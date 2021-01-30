@@ -159,10 +159,10 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
             }
         });
         let array1_result: Result<Array1<A>, _> = values.collect();
-        array1_result.and_then(|array1| {
-            Ok(array1
+        array1_result.map(|array1| {
+            array1
                 .into_shape((row_count, last_columns.unwrap_or(0)))
-                .unwrap())
+                .unwrap()
         })
     }
 }
