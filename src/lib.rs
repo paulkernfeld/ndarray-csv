@@ -275,6 +275,21 @@ mod tests {
     }
 
     #[test]
+    fn test_write_transposed() {
+        let mut writer = WriterBuilder::new().has_headers(false).from_writer(vec![]);
+
+        assert_matches! {
+            writer.serialize_array2(&array![[1, 4], [2, 5], [3, 6]].t().to_owned()),
+            Ok(())
+        }
+
+        assert_eq!(
+            writer.into_inner().expect("flush failed"),
+            b"1,2,3\n4,5,6\n"
+        );
+    }
+
+    #[test]
     fn test_write_err() {
         let destination: &mut [u8] = &mut [0; 8];
         let mut writer = WriterBuilder::new()
