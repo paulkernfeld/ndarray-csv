@@ -14,7 +14,7 @@ either = "1"
 # The relevant ndarray interfaces have actually been really stable so we can support a lot of ndarray versions. It is
 # possible (but hopefully not too likely) that a future ndarray version will break compatibility, at which time we'll
 # need to update this library to work with the new version of ndarray.
-ndarray = ">= 0.7, < 0.16"
+ndarray = ">= 0.7, < 0.17"
 serde = "1"
 
 [dev-dependencies]
