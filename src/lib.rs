@@ -129,12 +129,11 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
         let array1_result: Result<Array1<A>, _> = values.collect();
         array1_result.and_then(|array1| {
             let array1_len = array1.len();
-            array1
-                .into_shape_with_order(shape)
-                .map_err(|_| ReadError::NRows {
-                    expected: n_rows,
-                    actual: array1_len / n_columns,
-                })
+            #[allow(deprecated)]
+            array1.into_shape(shape).map_err(|_| ReadError::NRows {
+                expected: n_rows,
+                actual: array1_len / n_columns,
+            })
         })
     }
 
@@ -164,8 +163,9 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
         });
         let array1_result: Result<Array1<A>, _> = values.collect();
         array1_result.map(|array1| {
+            #[allow(deprecated)]
             array1
-                .into_shape_with_order((row_count, last_columns.unwrap_or(0)))
+                .into_shape((row_count, last_columns.unwrap_or(0)))
                 .unwrap()
         })
     }
