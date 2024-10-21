@@ -8,14 +8,14 @@ extern crate ndarray;
 extern crate ndarray_csv;
 
 use csv::{ReaderBuilder, WriterBuilder};
-use ndarray::{Array, Array2};
+use ndarray::{array, Array2};
 use ndarray_csv::{Array2Reader, Array2Writer};
 use std::error::Error;
 use std::fs::File;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Our 2x3 test array
-    let array = Array::from(vec![1, 2, 3, 4, 5, 6]).into_shape_with_order((2, 3)).unwrap();
+    let array = array![[1, 2, 3], [4, 5, 6]];
 
     // Write the array into the file.
     {
