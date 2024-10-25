@@ -6,14 +6,14 @@
 //! extern crate ndarray_csv;
 //!
 //! use csv::{ReaderBuilder, WriterBuilder};
-//! use ndarray::{Array, Array2};
+//! use ndarray::{array, Array2};
 //! use ndarray_csv::{Array2Reader, Array2Writer};
 //! use std::error::Error;
 //! use std::fs::File;
 //!
 //! fn main() -> Result<(), Box<dyn Error>> {
 //!     // Our 2x3 test array
-//!     let array = Array::from(vec![1, 2, 3, 4, 5, 6]).into_shape((2, 3)).unwrap();
+//!     let array = array![[1, 2, 3], [4, 5, 6]];
 //!
 //!     // Write the array into the file.
 //!     {
@@ -129,6 +129,7 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
         let array1_result: Result<Array1<A>, _> = values.collect();
         array1_result.and_then(|array1| {
             let array1_len = array1.len();
+            #[allow(deprecated)]
             array1.into_shape(shape).map_err(|_| ReadError::NRows {
                 expected: n_rows,
                 actual: array1_len / n_columns,
@@ -162,6 +163,7 @@ impl<'a, R: Read> Array2Reader for &'a mut Reader<R> {
         });
         let array1_result: Result<Array1<A>, _> = values.collect();
         array1_result.map(|array1| {
+            #[allow(deprecated)]
             array1
                 .into_shape((row_count, last_columns.unwrap_or(0)))
                 .unwrap()
